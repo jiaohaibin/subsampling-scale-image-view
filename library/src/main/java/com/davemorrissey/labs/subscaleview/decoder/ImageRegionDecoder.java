@@ -6,6 +6,7 @@ import android.graphics.Point;
 import android.graphics.Rect;
 import android.net.Uri;
 import androidx.annotation.NonNull;
+import androidx.security.crypto.EncryptedFile;
 
 /**
  * Interface for image decoding classes, allowing the default {@link android.graphics.BitmapRegionDecoder}
@@ -28,6 +29,16 @@ public interface ImageRegionDecoder {
      * @throws Exception if initialisation fails.
      */
     @NonNull Point init(Context context, @NonNull Uri uri) throws Exception;
+
+    /**
+     * Initialise the decoder. When possible, perform initial setup work once in this method. The
+     * dimensions of the image must be returned.
+     * @param context Application context. A reference may be held, but must be cleared on recycle.
+     * @param encryptedFile EncryptedFile of the image.
+     * @return Dimensions of the image.
+     * @throws Exception if initialisation fails.
+     */
+    @NonNull Point init(Context context, @NonNull EncryptedFile encryptedFile) throws Exception;
 
     /**
      * <p>

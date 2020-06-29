@@ -4,6 +4,7 @@ import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.net.Uri;
 import androidx.annotation.NonNull;
+import androidx.security.crypto.EncryptedFile;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
@@ -30,6 +31,16 @@ public final class ImageSource {
     private int sHeight;
     private Rect sRegion;
     private boolean cached;
+    private Integer orientation = null;
+    private final EncryptedFile encryptedFile;
+
+    private ImageSource(EncryptedFile encryptedFile) {
+        this.bitmap = null;
+        this.uri = null;
+        this.resource = null;
+        this.tile = true;
+        this.encryptedFile = encryptedFile;
+    }
 
     private ImageSource(Bitmap bitmap, boolean cached) {
         this.bitmap = bitmap;
@@ -39,6 +50,7 @@ public final class ImageSource {
         this.sWidth = bitmap.getWidth();
         this.sHeight = bitmap.getHeight();
         this.cached = cached;
+        this.encryptedFile = null;
     }
 
     private ImageSource(@NonNull Uri uri) {
@@ -58,6 +70,7 @@ public final class ImageSource {
         this.uri = uri;
         this.resource = null;
         this.tile = true;
+        this.encryptedFile = null;
     }
 
     private ImageSource(int resource) {
@@ -65,6 +78,7 @@ public final class ImageSource {
         this.uri = null;
         this.resource = resource;
         this.tile = true;
+        this.encryptedFile = null;
     }
 
     /**
@@ -89,6 +103,16 @@ public final class ImageSource {
             throw new NullPointerException("Asset name must not be null");
         }
         return uri(ASSET_SCHEME + assetName);
+    }
+
+    /**
+     * Create an instance from a EncryptedFile.
+     * @param encryptedFile EncryptedFile.
+     * @return an {@link ImageSource} instance.
+     */
+    @NonNull
+    public static ImageSource encryptedFile(@NonNull EncryptedFile encryptedFile) {
+        return new ImageSource(encryptedFile);
     }
 
     /**
@@ -229,6 +253,10 @@ public final class ImageSource {
 
     protected final Uri getUri() {
         return uri;
+    }
+
+    protected final EncryptedFile getEncryptedFile() {
+        return encryptedFile;
     }
 
     protected final Bitmap getBitmap() {

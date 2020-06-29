@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import androidx.annotation.NonNull;
+import androidx.security.crypto.EncryptedFile;
 
 /**
  * Interface for image decoding classes, allowing the default {@link android.graphics.BitmapFactory}
@@ -26,5 +27,14 @@ public interface ImageDecoder {
      * @throws Exception if decoding fails.
      */
     @NonNull Bitmap decode(Context context, @NonNull Uri uri) throws Exception;
+
+    /**
+     * Decode an image from InputStream
+     * @param context Application context
+     * @param encryptedFile EncryptedFile of the image
+     * @return the decoded bitmap
+     * @throws Exception if decoding fails.
+     */
+    @NonNull Bitmap decode(Context context, @NonNull EncryptedFile encryptedFile) throws Exception;
 
 }

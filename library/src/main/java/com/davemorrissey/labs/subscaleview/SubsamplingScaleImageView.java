@@ -23,6 +23,8 @@ import android.os.Message;
 import android.provider.MediaStore;
 import androidx.annotation.AnyThread;
 import androidx.annotation.NonNull;
+import androidx.security.crypto.EncryptedFile;
+
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -40,6 +42,8 @@ import com.davemorrissey.labs.subscaleview.decoder.ImageRegionDecoder;
 import com.davemorrissey.labs.subscaleview.decoder.SkiaImageDecoder;
 import com.davemorrissey.labs.subscaleview.decoder.SkiaImageRegionDecoder;
 
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -143,6 +147,9 @@ public class SubsamplingScaleImageView extends View {
     // Uri of full size image
     private Uri uri;
 
+    // EncryptedFile of full size image
+    private EncryptedFile encryptedFile;
+
     // Sample size used to display the whole image when fully zoomed out
     private int fullImageSampleSize;
 
@@ -153,7 +160,7 @@ public class SubsamplingScaleImageView extends View {
     private boolean debug;
 
     // Image orientation setting
-    private int orientation = ORIENTATION_0;
+    private int orientation = ORIENTATION_USE_EXIF;
 
     // Max scale allowed (prevent infinite zoom)
     private float maxScale = 2F;
@@ -443,10 +450,16 @@ public class SubsamplingScaleImageView extends View {
                 onPreviewLoaded(previewSource.getBitmap());
             } else {
                 Uri uri = previewSource.getUri();
+                EncryptedFile encryptedFile = previewSource.getEncryptedFile();
                 if (uri == null && previewSource.getResource() != null) {
                     uri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + getContext().getPackageName() + "/" + previewSource.getResource());
                 }
-                BitmapLoadTask task = new BitmapLoadTask(this, getContext(), bitmapDecoderFactory, uri, true);
+                BitmapLoadTask task;
+                if (uri != null) {
+                    task = new BitmapLoadTask(this, getContext(), bitmapDecoderFactory, uri, true);
+                } else {
+                    task = new BitmapLoadTask(this, getContext(), bitmapDecoderFactory, encryptedFile, true);
+                }
                 execute(task);
             }
         }
@@ -458,16 +471,27 @@ public class SubsamplingScaleImageView extends View {
         } else {
             sRegion = imageSource.getSRegion();
             uri = imageSource.getUri();
+            encryptedFile = imageSource.getEncryptedFile();
             if (uri == null && imageSource.getResource() != null) {
                 uri = Uri.parse(ContentResolver.SCHEME_ANDROID_RESOURCE + "://" + getContext().getPackageName() + "/" + imageSource.getResource());
             }
             if (imageSource.getTile() || sRegion != null) {
                 // Load the bitmap using tile decoding.
-                TilesInitTask task = new TilesInitTask(this, getContext(), regionDecoderFactory, uri);
+                TilesInitTask task;
+                if (uri != null) {
+                    task = new TilesInitTask(this, getContext(), regionDecoderFactory, uri);
+                } else {
+                    task = new TilesInitTask(this, getContext(), regionDecoderFactory, encryptedFile);
+                }
                 execute(task);
             } else {
                 // Load the bitmap as a single image.
-                BitmapLoadTask task = new BitmapLoadTask(this, getContext(), bitmapDecoderFactory, uri, false);
+                BitmapLoadTask task;
+                if (uri != null) {
+                    task = new BitmapLoadTask(this, getContext(), bitmapDecoderFactory, uri, false);
+                } else {
+                    task = new BitmapLoadTask(this, getContext(), bitmapDecoderFactory, encryptedFile, false);
+                }
                 execute(task);
             }
         }
@@ -1265,7 +1289,12 @@ public class SubsamplingScaleImageView extends View {
             // Use BitmapDecoder for better image support.
             decoder.recycle();
             decoder = null;
-            BitmapLoadTask task = new BitmapLoadTask(this, getContext(), bitmapDecoderFactory, uri, false);
+            BitmapLoadTask task;
+            if (uri != null) {
+                task = new BitmapLoadTask(this, getContext(), bitmapDecoderFactory, uri, false);
+            } else {
+                task = new BitmapLoadTask(this, getContext(), bitmapDecoderFactory, encryptedFile, false);
+            }
             execute(task);
 
         } else {
@@ -1536,6 +1565,7 @@ public class SubsamplingScaleImageView extends View {
         private final WeakReference<Context> contextRef;
         private final WeakReference<DecoderFactory<? extends ImageRegionDecoder>> decoderFactoryRef;
         private final Uri source;
+        private final EncryptedFile encryptedFile;
         private ImageRegionDecoder decoder;
         private Exception exception;
 
@@ -1544,22 +1574,39 @@ public class SubsamplingScaleImageView extends View {
             this.contextRef = new WeakReference<>(context);
             this.decoderFactoryRef = new WeakReference<DecoderFactory<? extends ImageRegionDecoder>>(decoderFactory);
             this.source = source;
+            this.encryptedFile = null;
+        }
+
+        TilesInitTask(SubsamplingScaleImageView view, Context context, DecoderFactory<? extends ImageRegionDecoder> decoderFactory, EncryptedFile encryptedFile) {
+            this.viewRef = new WeakReference<>(view);
+            this.contextRef = new WeakReference<>(context);
+            this.decoderFactoryRef = new WeakReference<DecoderFactory<? extends ImageRegionDecoder>>(decoderFactory);
+            this.source = null;
+            this.encryptedFile = encryptedFile;
         }
 
         @Override
         protected int[] doInBackground(Void... params) {
             try {
-                String sourceUri = source.toString();
                 Context context = contextRef.get();
                 DecoderFactory<? extends ImageRegionDecoder> decoderFactory = decoderFactoryRef.get();
                 SubsamplingScaleImageView view = viewRef.get();
                 if (context != null && decoderFactory != null && view != null) {
                     view.debug("TilesInitTask.doInBackground");
                     decoder = decoderFactory.make();
-                    Point dimensions = decoder.init(context, source);
+                    Point dimensions;
+                    int exifOrientation;
+                    if (source != null) {
+                        String sourceUri = source.toString();
+                        exifOrientation = view.getExifOrientation(context, sourceUri);
+                        dimensions = decoder.init(context, source);
+                    } else  {
+                        assert encryptedFile != null;
+                        exifOrientation = view.getExifOrientation(context, encryptedFile);
+                        dimensions = decoder.init(context, encryptedFile);
+                    }
                     int sWidth = dimensions.x;
                     int sHeight = dimensions.y;
-                    int exifOrientation = view.getExifOrientation(context, sourceUri);
                     if (view.sRegion != null) {
                         view.sRegion.left = Math.max(0, view.sRegion.left);
                         view.sRegion.top = Math.max(0, view.sRegion.top);
@@ -1719,6 +1766,7 @@ public class SubsamplingScaleImageView extends View {
         private final WeakReference<Context> contextRef;
         private final WeakReference<DecoderFactory<? extends ImageDecoder>> decoderFactoryRef;
         private final Uri source;
+        private final EncryptedFile encryptedFile;
         private final boolean preview;
         private Bitmap bitmap;
         private Exception exception;
@@ -1729,27 +1777,58 @@ public class SubsamplingScaleImageView extends View {
             this.decoderFactoryRef = new WeakReference<DecoderFactory<? extends ImageDecoder>>(decoderFactory);
             this.source = source;
             this.preview = preview;
+            this.encryptedFile = null;
+        }
+
+        BitmapLoadTask(SubsamplingScaleImageView view, Context context, DecoderFactory<? extends ImageDecoder> decoderFactory, EncryptedFile encryptedFile, boolean preview) {
+            this.viewRef = new WeakReference<>(view);
+            this.contextRef = new WeakReference<>(context);
+            this.decoderFactoryRef = new WeakReference<DecoderFactory<? extends ImageDecoder>>(decoderFactory);
+            this.source = null;
+            this.preview = preview;
+            this.encryptedFile = encryptedFile;
         }
 
         @Override
         protected Integer doInBackground(Void... params) {
-            try {
-                String sourceUri = source.toString();
-                Context context = contextRef.get();
-                DecoderFactory<? extends ImageDecoder> decoderFactory = decoderFactoryRef.get();
-                SubsamplingScaleImageView view = viewRef.get();
-                if (context != null && decoderFactory != null && view != null) {
-                    view.debug("BitmapLoadTask.doInBackground");
-                    bitmap = decoderFactory.make().decode(context, source);
-                    return view.getExifOrientation(context, sourceUri);
+            if (source != null) {
+                try {
+                    String sourceUri = source.toString();
+                    Context context = contextRef.get();
+                    DecoderFactory<? extends ImageDecoder> decoderFactory = decoderFactoryRef.get();
+                    SubsamplingScaleImageView view = viewRef.get();
+                    if (context != null && decoderFactory != null && view != null) {
+                        view.debug("BitmapLoadTask.doInBackground");
+                        bitmap = decoderFactory.make().decode(context, source);
+                        return view.getExifOrientation(context, sourceUri);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to load bitmap", e);
+                    this.exception = e;
+                } catch (OutOfMemoryError e) {
+                    Log.e(TAG, "Failed to load bitmap - OutOfMemoryError", e);
+                    this.exception = new RuntimeException(e);
                 }
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to load bitmap", e);
-                this.exception = e;
-            } catch (OutOfMemoryError e) {
-                Log.e(TAG, "Failed to load bitmap - OutOfMemoryError", e);
-                this.exception = new RuntimeException(e);
+            } else {
+                assert encryptedFile != null;
+                try {
+                    Context context = contextRef.get();
+                    DecoderFactory<? extends ImageDecoder> decoderFactory = decoderFactoryRef.get();
+                    SubsamplingScaleImageView view = viewRef.get();
+                    if (context != null && decoderFactory != null && view != null) {
+                        view.debug("BitmapLoadTask.doInBackground");
+                        bitmap = decoderFactory.make().decode(context, encryptedFile);
+                        return view.getExifOrientation(context, encryptedFile);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to load bitmap", e);
+                    this.exception = e;
+                } catch (OutOfMemoryError e) {
+                    Log.e(TAG, "Failed to load bitmap - OutOfMemoryError", e);
+                    this.exception = new RuntimeException(e);
+                }
             }
+
             return null;
         }
 
@@ -1874,6 +1953,43 @@ public class SubsamplingScaleImageView extends View {
                 Log.w(TAG, "Could not get EXIF orientation of image");
             }
         }
+        return exifOrientation;
+    }
+
+    /**
+     * Helper method for load tasks. Examines the EXIF info on the image file to determine the orientation.
+     * This will only work for external files, not assets, resources or other URIs.
+     */
+    @AnyThread
+    private int getExifOrientation(Context context, EncryptedFile encryptedFile) {
+        int exifOrientation = ORIENTATION_0;
+        FileInputStream inputStream = null;
+        try {
+            inputStream = encryptedFile.openFileInput();
+            ExifInterface exifInterface = new ExifInterface(inputStream);
+            int orientationAttr = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+            if (orientationAttr == ExifInterface.ORIENTATION_NORMAL || orientationAttr == ExifInterface.ORIENTATION_UNDEFINED) {
+                exifOrientation = ORIENTATION_0;
+            } else if (orientationAttr == ExifInterface.ORIENTATION_ROTATE_90) {
+                exifOrientation = ORIENTATION_90;
+            } else if (orientationAttr == ExifInterface.ORIENTATION_ROTATE_180) {
+                exifOrientation = ORIENTATION_180;
+            } else if (orientationAttr == ExifInterface.ORIENTATION_ROTATE_270) {
+                exifOrientation = ORIENTATION_270;
+            } else {
+                Log.w(TAG, "Unsupported EXIF orientation: " + orientationAttr);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Could not get EXIF orientation of image");
+        } finally {
+            try {
+                inputStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+        }
+
         return exifOrientation;
     }
 

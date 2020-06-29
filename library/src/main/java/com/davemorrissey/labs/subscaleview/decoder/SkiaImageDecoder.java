@@ -10,6 +10,8 @@ import android.net.Uri;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.security.crypto.EncryptedFile;
+
 import android.text.TextUtils;
 
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView;
@@ -97,6 +99,21 @@ public class SkiaImageDecoder implements ImageDecoder {
                 }
             }
         }
+        if (bitmap == null) {
+            throw new RuntimeException("Skia image region decoder returned null bitmap - image format may not be supported");
+        }
+        return bitmap;
+    }
+
+    @NonNull
+    @Override
+    public Bitmap decode(Context context, @NonNull EncryptedFile encryptedFile) throws Exception {
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        Bitmap bitmap;
+        options.inPreferredConfig = bitmapConfig;
+        InputStream inputStream = encryptedFile.openFileInput();
+        bitmap = BitmapFactory.decodeStream(inputStream, null, options);
+        inputStream.close();
         if (bitmap == null) {
             throw new RuntimeException("Skia image region decoder returned null bitmap - image format may not be supported");
         }

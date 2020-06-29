@@ -17,6 +17,8 @@ import android.os.Build;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.security.crypto.EncryptedFile;
+
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -24,6 +26,8 @@ import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView;
 
 import java.io.File;
 import java.io.FileFilter;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +76,8 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
 
     private Context context;
     private Uri uri;
+    private EncryptedFile encryptedFile;
+    private FileInputStream encryptedFileInputStream;
 
     private long fileLength = Long.MAX_VALUE;
     private final Point imageDimensions = new Point(0, 0);
@@ -115,6 +121,17 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
     public Point init(final Context context, @NonNull final Uri uri) throws Exception {
         this.context = context;
         this.uri = uri;
+        this.encryptedFile = null;
+        initialiseDecoder();
+        return this.imageDimensions;
+    }
+
+    @NonNull
+    @Override
+    public Point init(Context context, @NonNull EncryptedFile encryptedFile) throws Exception {
+        this.context = context;
+        this.encryptedFile = encryptedFile;
+        this.uri = null;
         initialiseDecoder();
         return this.imageDimensions;
     }
@@ -156,76 +173,81 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
      * been recycled while it was created.
      */
     private void initialiseDecoder() throws Exception {
-        String uriString = uri.toString();
         BitmapRegionDecoder decoder;
         long fileLength = Long.MAX_VALUE;
-        if (uriString.startsWith(RESOURCE_PREFIX)) {
-            Resources res;
-            String packageName = uri.getAuthority();
-            if (context.getPackageName().equals(packageName)) {
-                res = context.getResources();
-            } else {
-                PackageManager pm = context.getPackageManager();
-                res = pm.getResourcesForApplication(packageName);
-            }
+        if (uri != null) {
+            String uriString = uri.toString();
+            if (uriString.startsWith(RESOURCE_PREFIX)) {
+                Resources res;
+                String packageName = uri.getAuthority();
+                if (context.getPackageName().equals(packageName)) {
+                    res = context.getResources();
+                } else {
+                    PackageManager pm = context.getPackageManager();
+                    res = pm.getResourcesForApplication(packageName);
+                }
 
-            int id = 0;
-            List<String> segments = uri.getPathSegments();
-            int size = segments.size();
-            if (size == 2 && segments.get(0).equals("drawable")) {
-                String resName = segments.get(1);
-                id = res.getIdentifier(resName, "drawable", packageName);
-            } else if (size == 1 && TextUtils.isDigitsOnly(segments.get(0))) {
-                try {
-                    id = Integer.parseInt(segments.get(0));
-                } catch (NumberFormatException ignored) {
+                int id = 0;
+                List<String> segments = uri.getPathSegments();
+                int size = segments.size();
+                if (size == 2 && segments.get(0).equals("drawable")) {
+                    String resName = segments.get(1);
+                    id = res.getIdentifier(resName, "drawable", packageName);
+                } else if (size == 1 && TextUtils.isDigitsOnly(segments.get(0))) {
+                    try {
+                        id = Integer.parseInt(segments.get(0));
+                    } catch (NumberFormatException ignored) {
+                    }
                 }
-            }
-            try {
-                AssetFileDescriptor descriptor = context.getResources().openRawResourceFd(id);
-                fileLength = descriptor.getLength();
-            } catch (Exception e) {
-                // Pooling disabled
-            }
-            decoder = BitmapRegionDecoder.newInstance(context.getResources().openRawResource(id), false);
-        } else if (uriString.startsWith(ASSET_PREFIX)) {
-            String assetName = uriString.substring(ASSET_PREFIX.length());
-            try {
-                AssetFileDescriptor descriptor = context.getAssets().openFd(assetName);
-                fileLength = descriptor.getLength();
-            } catch (Exception e) {
-                // Pooling disabled
-            }
-            decoder = BitmapRegionDecoder.newInstance(context.getAssets().open(assetName, AssetManager.ACCESS_RANDOM), false);
-        } else if (uriString.startsWith(FILE_PREFIX)) {
-            decoder = BitmapRegionDecoder.newInstance(uriString.substring(FILE_PREFIX.length()), false);
-            try {
-                File file = new File(uriString);
-                if (file.exists()) {
-                    fileLength = file.length();
-                }
-            } catch (Exception e) {
-                // Pooling disabled
-            }
-        } else {
-            InputStream inputStream = null;
-            try {
-                ContentResolver contentResolver = context.getContentResolver();
-                inputStream = contentResolver.openInputStream(uri);
-                decoder = BitmapRegionDecoder.newInstance(inputStream, false);
                 try {
-                    AssetFileDescriptor descriptor = contentResolver.openAssetFileDescriptor(uri, "r");
-                    if (descriptor != null) {
-                        fileLength = descriptor.getLength();
+                    AssetFileDescriptor descriptor = context.getResources().openRawResourceFd(id);
+                    fileLength = descriptor.getLength();
+                } catch (Exception e) {
+                    // Pooling disabled
+                }
+                decoder = BitmapRegionDecoder.newInstance(context.getResources().openRawResource(id), false);
+            } else if (uriString.startsWith(ASSET_PREFIX)) {
+                String assetName = uriString.substring(ASSET_PREFIX.length());
+                try {
+                    AssetFileDescriptor descriptor = context.getAssets().openFd(assetName);
+                    fileLength = descriptor.getLength();
+                } catch (Exception e) {
+                    // Pooling disabled
+                }
+                decoder = BitmapRegionDecoder.newInstance(context.getAssets().open(assetName, AssetManager.ACCESS_RANDOM), false);
+            } else if (uriString.startsWith(FILE_PREFIX)) {
+                decoder = BitmapRegionDecoder.newInstance(uriString.substring(FILE_PREFIX.length()), false);
+                try {
+                    File file = new File(uriString);
+                    if (file.exists()) {
+                        fileLength = file.length();
                     }
                 } catch (Exception e) {
-                    // Stick with MAX_LENGTH
+                    // Pooling disabled
                 }
-            } finally {
-                if (inputStream != null) {
-                    try { inputStream.close(); } catch (Exception e) { /* Ignore */ }
+            } else {
+                InputStream inputStream = null;
+                try {
+                    ContentResolver contentResolver = context.getContentResolver();
+                    inputStream = contentResolver.openInputStream(uri);
+                    decoder = BitmapRegionDecoder.newInstance(inputStream, false);
+                    try {
+                        AssetFileDescriptor descriptor = contentResolver.openAssetFileDescriptor(uri, "r");
+                        if (descriptor != null) {
+                            fileLength = descriptor.getLength();
+                        }
+                    } catch (Exception e) {
+                        // Stick with MAX_LENGTH
+                    }
+                } finally {
+                    if (inputStream != null) {
+                        try { inputStream.close(); } catch (Exception e) { /* Ignore */ }
+                    }
                 }
             }
+        } else {
+            encryptedFileInputStream = encryptedFile.openFileInput();
+            decoder = BitmapRegionDecoder.newInstance(encryptedFileInputStream, false);
         }
 
         this.fileLength = fileLength;
@@ -304,6 +326,14 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
                 decoderPool = null;
                 context = null;
                 uri = null;
+                if (encryptedFileInputStream != null) {
+                    try {
+                        encryptedFileInputStream.close();
+                        encryptedFileInputStream = null;
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
             }
         } finally {
             decoderLock.writeLock().unlock();
@@ -315,7 +345,7 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
      * size of the image file, determines whether another decoder can be created. Subclasses can
      * override and customise this.
      * @param numberOfDecoders the number of decoders that have been created so far
-     * @param fileLength the size of the image file in bytes. Creating another decoder will use approximately this much native memory.
+     * @param fileLength       the size of the image file in bytes. Creating another decoder will use approximately this much native memory.
      * @return true if another decoder can be created.
      */
     @SuppressWarnings("WeakerAccess")

@@ -11,10 +11,14 @@ import android.os.Build;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.security.crypto.EncryptedFile;
+
 import android.text.TextUtils;
 
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView;
 
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.concurrent.locks.Lock;
@@ -42,6 +46,7 @@ public class SkiaImageRegionDecoder implements ImageRegionDecoder {
     private static final String RESOURCE_PREFIX = ContentResolver.SCHEME_ANDROID_RESOURCE + "://";
 
     private final Bitmap.Config bitmapConfig;
+    private FileInputStream encryptedFileInputStream = null;
 
     @Keep
     @SuppressWarnings("unused")
@@ -112,6 +117,14 @@ public class SkiaImageRegionDecoder implements ImageRegionDecoder {
         return new Point(decoder.getWidth(), decoder.getHeight());
     }
 
+    @NonNull
+    @Override
+    public Point init(Context context, @NonNull EncryptedFile encryptedFile) throws Exception {
+        encryptedFileInputStream = encryptedFile.openFileInput();
+        decoder = BitmapRegionDecoder.newInstance(encryptedFileInputStream, false);
+        return new Point(decoder.getWidth(), decoder.getHeight());
+    }
+
     @Override
     @NonNull
     public Bitmap decodeRegion(@NonNull Rect sRect, int sampleSize) {
@@ -135,6 +148,19 @@ public class SkiaImageRegionDecoder implements ImageRegionDecoder {
     }
 
     @Override
+    protected void finalize() throws Throwable {
+        if (encryptedFileInputStream != null) {
+            try {
+                encryptedFileInputStream.close();
+                encryptedFileInputStream = null;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        super.finalize();
+    }
+
+    @Override
     public synchronized boolean isReady() {
         return decoder != null && !decoder.isRecycled();
     }
@@ -143,6 +169,14 @@ public class SkiaImageRegionDecoder implements ImageRegionDecoder {
     public synchronized void recycle() {
         decoderLock.writeLock().lock();
         try {
+            if (encryptedFileInputStream != null) {
+                try {
+                    encryptedFileInputStream.close();
+                    encryptedFileInputStream = null;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
             decoder.recycle();
             decoder = null;
         } finally {

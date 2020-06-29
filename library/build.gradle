@@ -24,6 +24,7 @@ dependencies {
     javadocs 'androidx.exifinterface:exifinterface:1.1.0'
     implementation 'androidx.annotation:annotation:1.1.0'
     implementation 'androidx.exifinterface:exifinterface:1.1.0'
+    implementation 'androidx.security:security-crypto:1.1.0-alpha01'
 }
 
 task javadoc(type: Javadoc) {
