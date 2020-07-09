@@ -6,6 +6,8 @@ import android.net.Uri;
 import androidx.annotation.NonNull;
 import androidx.security.crypto.EncryptedFile;
 
+import java.io.InputStream;
+
 /**
  * Interface for image decoding classes, allowing the default {@link android.graphics.BitmapFactory}
  * based on the Skia library to be replaced with a custom class.
@@ -31,10 +33,18 @@ public interface ImageDecoder {
     /**
      * Decode an image from InputStream
      * @param context Application context
+     * @param stream InputStream of the image
+     * @return the decoded bitmap
+     * @throws Exception if decoding fails.
+     */
+    @NonNull Bitmap decode(Context context, @NonNull InputStream stream) throws Exception;
+
+    /**
+     * Decode an image from EncryptedFile
+     * @param context Application context
      * @param encryptedFile EncryptedFile of the image
      * @return the decoded bitmap
      * @throws Exception if decoding fails.
      */
     @NonNull Bitmap decode(Context context, @NonNull EncryptedFile encryptedFile) throws Exception;
-
 }

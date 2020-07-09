@@ -47,7 +47,7 @@ public class SkiaImageDecoder implements ImageDecoder {
         } else if (globalBitmapConfig != null) {
             this.bitmapConfig = globalBitmapConfig;
         } else {
-            this.bitmapConfig = Bitmap.Config.RGB_565;
+            this.bitmapConfig = Bitmap.Config.ARGB_8888;
         }
     }
 
@@ -114,6 +114,19 @@ public class SkiaImageDecoder implements ImageDecoder {
         InputStream inputStream = encryptedFile.openFileInput();
         bitmap = BitmapFactory.decodeStream(inputStream, null, options);
         inputStream.close();
+        if (bitmap == null) {
+            throw new RuntimeException("Skia image region decoder returned null bitmap - image format may not be supported");
+        }
+        return bitmap;
+    }
+
+    @NonNull
+    @Override
+    public Bitmap decode(Context context, @NonNull InputStream stream) throws Exception {
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        Bitmap bitmap;
+        options.inPreferredConfig = bitmapConfig;
+        bitmap = BitmapFactory.decodeStream(stream, null, options);
         if (bitmap == null) {
             throw new RuntimeException("Skia image region decoder returned null bitmap - image format may not be supported");
         }

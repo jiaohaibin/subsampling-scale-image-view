@@ -7,6 +7,7 @@ import androidx.annotation.NonNull;
 import androidx.security.crypto.EncryptedFile;
 
 import java.io.File;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 
@@ -33,6 +34,7 @@ public final class ImageSource {
     private boolean cached;
     private Integer orientation = null;
     private final EncryptedFile encryptedFile;
+    private final InputStream stream;
 
     private ImageSource(EncryptedFile encryptedFile) {
         this.bitmap = null;
@@ -40,6 +42,7 @@ public final class ImageSource {
         this.resource = null;
         this.tile = true;
         this.encryptedFile = encryptedFile;
+        this.stream = null;
     }
 
     private ImageSource(Bitmap bitmap, boolean cached) {
@@ -51,6 +54,7 @@ public final class ImageSource {
         this.sHeight = bitmap.getHeight();
         this.cached = cached;
         this.encryptedFile = null;
+        this.stream = null;
     }
 
     private ImageSource(@NonNull Uri uri) {
@@ -71,6 +75,7 @@ public final class ImageSource {
         this.resource = null;
         this.tile = true;
         this.encryptedFile = null;
+        this.stream = null;
     }
 
     private ImageSource(int resource) {
@@ -79,6 +84,16 @@ public final class ImageSource {
         this.resource = resource;
         this.tile = true;
         this.encryptedFile = null;
+        this.stream = null;
+    }
+
+    private ImageSource(InputStream stream) {
+        this.bitmap = null;
+        this.uri = null;
+        this.resource = null;
+        this.tile = true;
+        this.encryptedFile = null;
+        this.stream = stream;
     }
 
     /**
@@ -113,6 +128,16 @@ public final class ImageSource {
     @NonNull
     public static ImageSource encryptedFile(@NonNull EncryptedFile encryptedFile) {
         return new ImageSource(encryptedFile);
+    }
+
+    /**
+     * Create an instance from a InputStream.
+     * @param stream InputStream.
+     * @return an {@link ImageSource} instance.
+     */
+    @NonNull
+    public static ImageSource stream(@NonNull InputStream stream) {
+        return new ImageSource(stream);
     }
 
     /**
@@ -257,6 +282,10 @@ public final class ImageSource {
 
     protected final EncryptedFile getEncryptedFile() {
         return encryptedFile;
+    }
+
+    protected final InputStream getStream() {
+        return stream;
     }
 
     protected final Bitmap getBitmap() {

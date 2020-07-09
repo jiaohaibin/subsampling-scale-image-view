@@ -62,7 +62,7 @@ public class SkiaImageRegionDecoder implements ImageRegionDecoder {
         } else if (globalBitmapConfig != null) {
             this.bitmapConfig = globalBitmapConfig;
         } else {
-            this.bitmapConfig = Bitmap.Config.RGB_565;
+            this.bitmapConfig = Bitmap.Config.ARGB_8888;
         }
     }
 
@@ -122,6 +122,13 @@ public class SkiaImageRegionDecoder implements ImageRegionDecoder {
     public Point init(Context context, @NonNull EncryptedFile encryptedFile) throws Exception {
         encryptedFileInputStream = encryptedFile.openFileInput();
         decoder = BitmapRegionDecoder.newInstance(encryptedFileInputStream, false);
+        return new Point(decoder.getWidth(), decoder.getHeight());
+    }
+
+    @NonNull
+    @Override
+    public Point init(Context context, @NonNull InputStream stream) throws Exception {
+        decoder = BitmapRegionDecoder.newInstance(stream, false);
         return new Point(decoder.getWidth(), decoder.getHeight());
     }
 

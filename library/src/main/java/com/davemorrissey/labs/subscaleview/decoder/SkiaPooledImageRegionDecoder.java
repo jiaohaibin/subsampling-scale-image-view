@@ -78,6 +78,7 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
     private Uri uri;
     private EncryptedFile encryptedFile;
     private FileInputStream encryptedFileInputStream;
+    private InputStream stream;
 
     private long fileLength = Long.MAX_VALUE;
     private final Point imageDimensions = new Point(0, 0);
@@ -122,6 +123,7 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
         this.context = context;
         this.uri = uri;
         this.encryptedFile = null;
+        this.stream = null;
         initialiseDecoder();
         return this.imageDimensions;
     }
@@ -132,6 +134,18 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
         this.context = context;
         this.encryptedFile = encryptedFile;
         this.uri = null;
+        this.stream = null;
+        initialiseDecoder();
+        return this.imageDimensions;
+    }
+
+    @NonNull
+    @Override
+    public Point init(Context context, @NonNull InputStream stream) throws Exception {
+        this.context = context;
+        this.encryptedFile = null;
+        this.uri = null;
+        this.stream = stream;
         initialiseDecoder();
         return this.imageDimensions;
     }
@@ -245,6 +259,8 @@ public class SkiaPooledImageRegionDecoder implements ImageRegionDecoder {
                     }
                 }
             }
+        } else if (stream != null) {
+            decoder = BitmapRegionDecoder.newInstance(stream, false);
         } else {
             encryptedFileInputStream = encryptedFile.openFileInput();
             decoder = BitmapRegionDecoder.newInstance(encryptedFileInputStream, false);
