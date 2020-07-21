@@ -94,6 +94,19 @@ public final class ImageSource {
         this.tile = true;
         this.encryptedFile = null;
         this.stream = stream;
+        this.sWidth = 0;
+        this.sHeight = 0;
+    }
+
+    private ImageSource(InputStream stream, int width, int height) {
+        this.bitmap = null;
+        this.uri = null;
+        this.resource = null;
+        this.tile = true;
+        this.encryptedFile = null;
+        this.stream = stream;
+        this.sWidth = width;
+        this.sHeight = height;
     }
 
     /**
@@ -138,6 +151,16 @@ public final class ImageSource {
     @NonNull
     public static ImageSource stream(@NonNull InputStream stream) {
         return new ImageSource(stream);
+    }
+
+    /**
+     * Create an instance from a InputStream.
+     * @param stream InputStream.
+     * @return an {@link ImageSource} instance.
+     */
+    @NonNull
+    public static ImageSource stream(@NonNull InputStream stream, int width, int height) {
+        return new ImageSource(stream, width, height);
     }
 
     /**
